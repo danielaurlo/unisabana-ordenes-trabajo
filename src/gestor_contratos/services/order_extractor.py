@@ -1,4 +1,4 @@
-"""Extract normalized work-order data from SIGGA PDFs."""
+"""Extract normalized work-order data from SIGA PDFs."""
 
 import re
 from datetime import date
@@ -16,7 +16,7 @@ from gestor_contratos.services.pdf_extractor import PDFExtractor
 
 
 class OrdenTrabajoExtractor:
-    """Extract fields from the order pages of a SIGGA PDF."""
+    """Extract fields from the order pages of a SIGA PDF."""
 
     def __init__(self, pdf_extractor: PDFExtractor | None = None) -> None:
         self.pdf_extractor = pdf_extractor or PDFExtractor()

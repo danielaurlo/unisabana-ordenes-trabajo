@@ -33,7 +33,7 @@ class DetalleOrden(BaseModel):
 
 
 class OrdenTrabajoData(BaseModel):
-    """Normalized data extracted from a SIGGA work order."""
+    """Normalized data extracted from a SIGA work order."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
 

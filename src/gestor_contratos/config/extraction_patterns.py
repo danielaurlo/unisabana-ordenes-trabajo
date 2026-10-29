@@ -1,4 +1,4 @@
-"""Configurable labels and regular expressions for SIGGA documents."""
+"""Configurable labels and regular expressions for SIGA documents."""
 
 ORDER_DATE = (
     r"(?im)^\s*1\.\s*FECHA\s+DE\s+LA\s+ORDEN\s*:?[ \t]*"

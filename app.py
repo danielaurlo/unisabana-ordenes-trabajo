@@ -49,19 +49,19 @@ def render_page_header() -> None:
     with st.container(horizontal=True, vertical_alignment="center"):
         st.image(str(LOGO_PATH), width=202, alt="Universidad de La Sabana")
     st.caption(
-        "Universidad de La Sabana · Procesamiento de órdenes de trabajo SIGGA"
+        "Universidad de La Sabana · Procesamiento de órdenes de trabajo SIGA"
     )
 
 
 def render_document_upload() -> bool:
-    """Render the SIGGA document upload section."""
+    """Render the SIGA document upload section."""
     st.subheader("Documento fuente", icon=":material/upload_file:")
     st.caption("Selecciona una orden de trabajo en formato PDF para iniciar.")
 
     uploaded_file = st.file_uploader(
         "Archivo PDF",
         type=["pdf"],
-        key="sigga_document",
+        key="siga_document",
         help="Solo se permiten archivos PDF.",
     )
 
@@ -110,10 +110,10 @@ def render_processing_action() -> None:
         if pdf_bytes is None:
             st.session_state.processing_status = "error"
             st.session_state.processing_error = (
-                "Cargue un documento SIGGA antes de procesarlo."
+                "Cargue un documento SIGA antes de procesarlo."
             )
             st.warning(
-                "Cargue un documento SIGGA antes de procesarlo.",
+                "Cargue un documento SIGA antes de procesarlo.",
                 icon=":material/upload_file:",
             )
         else:
@@ -369,7 +369,7 @@ def render_previews() -> None:
             st.pdf(
                 pdf_bytes,
                 height=PREVIEW_HEIGHT,
-                alt="Documento PDF SIGGA cargado",
+                alt="Documento PDF SIGA cargado",
             )
 
     elif view == "Revisar datos":
