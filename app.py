@@ -6,14 +6,15 @@ from pathlib import Path
 import streamlit as st
 
 from gestor_contratos.models.orden_trabajo import OrdenTrabajoData
+from gestor_contratos.services.combined_pdf_generator import (
+    CombinedPDFGenerationError,
+    CombinedPDFGenerator,
+)
 from gestor_contratos.services.excel_generator import (
     ExcelGenerationError,
     ExcelGenerator,
 )
-from gestor_contratos.services.excel_preview import (
-    ExcelPreviewError,
-    ExcelPreviewRenderer,
-)
+from gestor_contratos.services.excel_preview import ExcelPreviewError
 from gestor_contratos.services.order_extractor import OrdenTrabajoExtractor
 from gestor_contratos.services.pdf_extractor import (
     PDFExtractionError,
@@ -42,6 +43,38 @@ def initialize_session_state() -> None:
     st.session_state.setdefault("processing_error", None)
     st.session_state.setdefault("extracted_order_data", None)
     st.session_state.setdefault("generated_excel_bytes", None)
+    st.session_state.setdefault("generated_acta_pdf_bytes", None)
+    st.session_state.setdefault("generated_combined_pdf_bytes", None)
+    st.session_state.setdefault("pdf_generation_error", None)
+
+
+def reset_generated_documents() -> None:
+    """Clear generated files when the source document changes."""
+    st.session_state.generated_excel_bytes = None
+    st.session_state.generated_acta_pdf_bytes = None
+    st.session_state.generated_combined_pdf_bytes = None
+    st.session_state.pdf_generation_error = None
+
+
+def generate_pdf_documents(excel_bytes: bytes) -> None:
+    """Convert the generated Excel and append its acta to the source PDF."""
+    st.session_state.generated_acta_pdf_bytes = None
+    st.session_state.generated_combined_pdf_bytes = None
+    st.session_state.pdf_generation_error = None
+    source_pdf = st.session_state.uploaded_document_bytes
+    if source_pdf is None:
+        st.session_state.pdf_generation_error = (
+            "No se encontró el PDF de la orden para generar el documento final."
+        )
+        return
+
+    try:
+        result = CombinedPDFGenerator().generate(source_pdf, excel_bytes)
+    except (ExcelPreviewError, CombinedPDFGenerationError) as error:
+        st.session_state.pdf_generation_error = str(error)
+    else:
+        st.session_state.generated_acta_pdf_bytes = result.acta_pdf_bytes
+        st.session_state.generated_combined_pdf_bytes = result.combined_pdf_bytes
 
 
 def render_page_header() -> None:
@@ -70,7 +103,7 @@ def render_document_upload() -> bool:
             st.session_state.extracted_text = None
             st.session_state.extracted_page_count = None
             st.session_state.extracted_order_data = None
-            st.session_state.generated_excel_bytes = None
+            reset_generated_documents()
             st.session_state.processing_status = "idle"
             st.session_state.processing_error = None
         st.session_state.uploaded_document_name = uploaded_file.name
@@ -87,7 +120,7 @@ def render_document_upload() -> bool:
         st.session_state.extracted_text = None
         st.session_state.extracted_page_count = None
         st.session_state.extracted_order_data = None
-        st.session_state.generated_excel_bytes = None
+        reset_generated_documents()
         st.session_state.processing_status = "idle"
         st.session_state.processing_error = None
     return uploaded_file is not None
@@ -124,14 +157,14 @@ def render_processing_action() -> None:
                 st.session_state.extracted_text = None
                 st.session_state.extracted_page_count = None
                 st.session_state.extracted_order_data = None
-                st.session_state.generated_excel_bytes = None
+                reset_generated_documents()
                 st.session_state.processing_status = "error"
                 st.session_state.processing_error = str(error)
             else:
                 st.session_state.extracted_text = result.text
                 st.session_state.extracted_page_count = result.page_count
                 st.session_state.extracted_order_data = order_data
-                st.session_state.generated_excel_bytes = None
+                reset_generated_documents()
                 if not order_data.campos_faltantes and not order_data.campos_ambiguos:
                     try:
                         st.session_state.generated_excel_bytes = (
@@ -141,6 +174,9 @@ def render_processing_action() -> None:
                         st.session_state.processing_error = str(error)
                 st.session_state.processing_status = "success"
                 if st.session_state.generated_excel_bytes is not None:
+                    generate_pdf_documents(
+                        st.session_state.generated_excel_bytes
+                    )
                     st.session_state.processing_error = None
 
     if st.session_state.processing_status == "success":
@@ -153,6 +189,11 @@ def render_processing_action() -> None:
         st.error(
             st.session_state.processing_error,
             icon=":material/error:",
+        )
+    if st.session_state.pdf_generation_error:
+        st.warning(
+            st.session_state.pdf_generation_error,
+            icon=":material/picture_as_pdf:",
         )
 
 
@@ -284,12 +325,16 @@ def render_extracted_editor() -> None:
         else:
             st.session_state.extracted_order_data = updated_data
             st.session_state.generated_excel_bytes = excel_bytes
+            generate_pdf_documents(excel_bytes)
             st.session_state.processing_status = "success"
-            st.success(
-                "Cambios guardados. La previsualización y el Excel fueron "
-                "actualizados.",
-                icon=":material/check_circle:",
-            )
+            if st.session_state.generated_combined_pdf_bytes is not None:
+                message = (
+                    "Cambios guardados. El Excel, el acta y el PDF final "
+                    "fueron actualizados."
+                )
+            else:
+                message = "Cambios guardados y Excel actualizado."
+            st.success(message, icon=":material/check_circle:")
 
 
 def _build_edited_order_data(
@@ -391,36 +436,49 @@ def render_previews() -> None:
         else:
             with st.container(horizontal=True, vertical_alignment="center"):
                 st.badge(
-                    "Excel listo",
+                    "Documentos listos",
                     icon=":material/check_circle:",
                     color="green",
                 )
+                combined_pdf = st.session_state.generated_combined_pdf_bytes
                 st.download_button(
-                    "Descargar",
+                    "Descargar orden y acta",
+                    data=combined_pdf or b"",
+                    file_name=_pdf_download_name(),
+                    mime="application/pdf",
+                    icon=":material/picture_as_pdf:",
+                    type="primary",
+                    disabled=combined_pdf is None,
+                    on_click="ignore",
+                    width="content",
+                )
+                st.download_button(
+                    "Descargar Excel",
                     data=excel_bytes,
                     file_name=_excel_download_name(),
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     icon=":material/download:",
+                    on_click="ignore",
                     width="content",
                 )
-            render_excel_preview(excel_bytes)
+            if st.session_state.pdf_generation_error:
+                st.warning(
+                    st.session_state.pdf_generation_error,
+                    icon=":material/picture_as_pdf:",
+                )
+            render_excel_preview(st.session_state.generated_acta_pdf_bytes)
 
 
-def render_excel_preview(excel_bytes: bytes | None) -> None:
-    """Render a visually faithful preview of the generated workbook."""
-    if excel_bytes is None:
+def render_excel_preview(acta_pdf_bytes: bytes | None) -> None:
+    """Render the acta PDF already generated from the workbook."""
+    if acta_pdf_bytes is None:
         return
+    st.pdf(
+        acta_pdf_bytes,
+        height=PREVIEW_HEIGHT,
+        alt="Vista previa del acta diligenciada",
+    )
 
-    try:
-        preview_pdf = ExcelPreviewRenderer().render(excel_bytes)
-    except ExcelPreviewError as error:
-        st.warning(str(error), icon=":material/visibility_off:")
-    else:
-        st.pdf(
-            preview_pdf,
-            height=PREVIEW_HEIGHT,
-            alt="Vista previa del Excel diligenciado",
-        )
 
 def _excel_download_name() -> str:
     """Build a useful institutional filename for the generated workbook."""
@@ -429,6 +487,15 @@ def _excel_download_name() -> str:
     safe_number = re.sub(r"[^A-Za-z0-9_-]", "", order_number or "")
     prefix = f"OT_{safe_number}" if safe_number else "OT"
     return f"{prefix}_Acta_Entrega.xlsx"
+
+
+def _pdf_download_name() -> str:
+    """Build a useful filename for the combined order and acta PDF."""
+    order_data = st.session_state.extracted_order_data
+    order_number = order_data.numero_orden if order_data else None
+    safe_number = re.sub(r"[^A-Za-z0-9_-]", "", order_number or "")
+    prefix = f"OT_{safe_number}" if safe_number else "OT"
+    return f"{prefix}_Orden_y_Acta.pdf"
 
 
 def _format_preview_value(value) -> str:

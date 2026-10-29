@@ -37,11 +37,13 @@ class ExcelPreviewRenderer:
         ) as directory:
             temporary_dir = Path(directory)
             source = temporary_dir / "acta_entrega_preview.xlsx"
+            profile = temporary_dir / "libreoffice_profile"
             source.write_bytes(excel_bytes)
             try:
                 subprocess.run(
                     [
                         self.office_command,
+                        f"-env:UserInstallation={profile.as_uri()}",
                         "--headless",
                         "--convert-to",
                         "pdf",
