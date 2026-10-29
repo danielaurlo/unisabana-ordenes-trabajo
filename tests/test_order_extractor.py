@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 
 import pymupdf
@@ -40,6 +41,8 @@ def test_extracts_missing_fields_without_inventing_values(tmp_path: Path) -> Non
     data = OrdenTrabajoExtractor().extract(path.read_bytes())
 
     assert data.fecha_orden is not None
+    assert data.fecha_acta == date.today()
+    assert "fecha_acta" not in data.campos_faltantes
     assert data.numero_orden is None
     assert data.proveedor.nombre is None
     assert "numero_orden" in data.campos_faltantes

@@ -67,6 +67,9 @@ def test_fills_institutional_template_without_changing_source() -> None:
     assert result_sheet["M14"].value == "27012"
     assert result_sheet["AJ22"].value == "27012"
     assert result_sheet["AQ14"].value.date() == date(2026, 9, 15)
+    assert result_sheet["N28"].value == "X"
+    assert result_sheet["S28"].value is None
+    assert result_sheet["X28"].value is None
     assert result_sheet["Y15"].value.date() == date(2026, 9, 30)
     assert result_sheet["J7"].value == 15
     assert result_sheet["L7"].value == 9
@@ -96,3 +99,20 @@ def test_fills_institutional_template_without_changing_source() -> None:
     assert order_sheet["AP66"].value == Decimal("650000")
     assert order_sheet["AV66"].value == '=IF(AK66="","",AK66*AP66)'
     assert sha256(TEMPLATE.read_bytes()).hexdigest() == original_hash
+
+
+def test_marks_required_certificate_and_writes_which_one() -> None:
+    data = sample_data().model_copy(
+        update={
+            "requiere_certificado": True,
+            "tipo_certificado": "Certificado de disposición final",
+        }
+    )
+
+    generated = ExcelGenerator().generate(data)
+
+    workbook = load_workbook(BytesIO(generated))
+    sheet = workbook[SHEET]
+    assert sheet["N28"].value is None
+    assert sheet["S28"].value == "X"
+    assert sheet["X28"].value == "Certificado de disposición final"

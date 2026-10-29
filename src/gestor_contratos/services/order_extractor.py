@@ -66,7 +66,21 @@ class OrdenTrabajoExtractor:
             ambiguous,
         )
         numero_orden = self._normalize_order_number(numero_original)
-        fecha_acta = self._extract_acta_date(acta_words, missing, ambiguous)
+        has_acta = "ACTA DE ENTREGA FINAL" in acta_text.upper()
+        if has_acta:
+            fecha_acta = self._extract_acta_date(
+                acta_words, missing, ambiguous
+            )
+        else:
+            fecha_acta = date.today()
+
+        if (
+            fecha_acta is not None
+            and fecha_orden is not None
+            and fecha_acta < fecha_orden
+            and "fecha_acta" not in ambiguous
+        ):
+            ambiguous.append("fecha_acta")
 
         proveedor = ProveedorData(
             nombre=self._field(

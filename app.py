@@ -1,6 +1,7 @@
 import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from hashlib import sha256
 from pathlib import Path
 
 import streamlit as st
@@ -37,6 +38,7 @@ def initialize_session_state() -> None:
     """Initialize values that must persist between Streamlit reruns."""
     st.session_state.setdefault("uploaded_document_name", None)
     st.session_state.setdefault("uploaded_document_bytes", None)
+    st.session_state.setdefault("uploaded_document_fingerprint", None)
     st.session_state.setdefault("extracted_text", None)
     st.session_state.setdefault("extracted_page_count", None)
     st.session_state.setdefault("processing_status", "idle")
@@ -46,6 +48,17 @@ def initialize_session_state() -> None:
     st.session_state.setdefault("generated_acta_pdf_bytes", None)
     st.session_state.setdefault("generated_combined_pdf_bytes", None)
     st.session_state.setdefault("pdf_generation_error", None)
+
+    stored_order = st.session_state.extracted_order_data
+    if stored_order is not None and not hasattr(
+        stored_order, "requiere_certificado"
+    ):
+        stored_values = stored_order.model_dump()
+        stored_values.setdefault("requiere_certificado", False)
+        stored_values.setdefault("tipo_certificado", None)
+        st.session_state.extracted_order_data = (
+            OrdenTrabajoData.model_validate(stored_values)
+        )
 
 
 def reset_generated_documents() -> None:
@@ -86,20 +99,29 @@ def render_page_header() -> None:
     )
 
 
-def render_document_upload() -> bool:
+def render_document_upload(*, compact: bool = False) -> bool:
     """Render the SIGA document upload section."""
-    st.subheader("Documento fuente", icon=":material/upload_file:")
-    st.caption("Selecciona una orden de trabajo en formato PDF para iniciar.")
+    if not compact:
+        st.subheader("Documento fuente", icon=":material/upload_file:")
+        st.caption("Selecciona una orden de trabajo en formato PDF para iniciar.")
+    else:
+        st.caption(
+            "Puedes reemplazar el archivo actual seleccionando otra orden en PDF."
+        )
 
     uploaded_file = st.file_uploader(
-        "Archivo PDF",
+        "Orden de trabajo" if compact else "Archivo PDF",
         type=["pdf"],
         key="siga_document",
-        help="Solo se permiten archivos PDF.",
+        help="Selecciona una orden diferente para reemplazar el archivo actual."
+        if compact
+        else "Solo se permiten archivos PDF.",
     )
 
     if uploaded_file is not None:
-        if uploaded_file.name != st.session_state.uploaded_document_name:
+        uploaded_bytes = uploaded_file.getvalue()
+        fingerprint = sha256(uploaded_bytes).hexdigest()
+        if fingerprint != st.session_state.uploaded_document_fingerprint:
             st.session_state.extracted_text = None
             st.session_state.extracted_page_count = None
             st.session_state.extracted_order_data = None
@@ -107,29 +129,28 @@ def render_document_upload() -> bool:
             st.session_state.processing_status = "idle"
             st.session_state.processing_error = None
         st.session_state.uploaded_document_name = uploaded_file.name
-        st.session_state.uploaded_document_bytes = uploaded_file.getvalue()
-        st.badge(
-            "PDF listo para procesar",
-            icon=":material/check_circle:",
-            color="green",
-        )
-        st.caption(uploaded_file.name)
+        st.session_state.uploaded_document_bytes = uploaded_bytes
+        st.session_state.uploaded_document_fingerprint = fingerprint
     else:
+        had_uploaded_document = st.session_state.uploaded_document_bytes is not None
         st.session_state.uploaded_document_name = None
         st.session_state.uploaded_document_bytes = None
+        st.session_state.uploaded_document_fingerprint = None
         st.session_state.extracted_text = None
         st.session_state.extracted_page_count = None
         st.session_state.extracted_order_data = None
         reset_generated_documents()
         st.session_state.processing_status = "idle"
         st.session_state.processing_error = None
+        if compact and had_uploaded_document:
+            st.rerun()
     return uploaded_file is not None
 
 
 def render_processing_action() -> None:
     """Render the processing action without duplicate manual fields."""
     st.markdown("**Procesar documento**")
-    st.caption("Extrae los datos y genera la plantilla institucional.")
+    render_document_upload(compact=True)
     submitted = st.button(
         "Procesar documento",
         type="primary",
@@ -160,6 +181,11 @@ def render_processing_action() -> None:
                 reset_generated_documents()
                 st.session_state.processing_status = "error"
                 st.session_state.processing_error = str(error)
+                st.toast(
+                    f"No fue posible procesar el documento: {error}",
+                    icon=":material/error:",
+                    duration="long",
+                )
             else:
                 st.session_state.extracted_text = result.text
                 st.session_state.extracted_page_count = result.page_count
@@ -178,14 +204,12 @@ def render_processing_action() -> None:
                         st.session_state.generated_excel_bytes
                     )
                     st.session_state.processing_error = None
+                st.toast(
+                    "Documento procesado",
+                    icon=":material/check_circle:",
+                )
 
-    if st.session_state.processing_status == "success":
-        st.badge(
-            "Documento procesado",
-            icon=":material/check_circle:",
-            color="green",
-        )
-    elif st.session_state.processing_status == "error":
+    if st.session_state.processing_status == "error":
         st.error(
             st.session_state.processing_error,
             icon=":material/error:",
@@ -251,12 +275,16 @@ def render_extracted_editor() -> None:
         )
 
         st.markdown("**Fechas y valores**")
-        row = st.columns(3)
+        row = st.columns(2)
         fecha_orden = row[0].date_input("Fecha de orden", value=order_data.fecha_orden)
-        fecha_inicio = row[1].date_input(
+        fecha_acta = row[1].date_input(
+            "Fecha del acta", value=order_data.fecha_acta
+        )
+        row = st.columns(2)
+        fecha_inicio = row[0].date_input(
             "Fecha de inicio", value=order_data.fecha_inicio
         )
-        fecha_vencimiento = row[2].date_input(
+        fecha_vencimiento = row[1].date_input(
             "Fecha de vencimiento", value=order_data.fecha_vencimiento
         )
         row = st.columns(2)
@@ -265,6 +293,24 @@ def render_extracted_editor() -> None:
         )
         total = row[1].text_input(
             "Total", value=_format_preview_value(order_data.total)
+        )
+
+        st.markdown("**Acta de entrega**")
+        row = st.columns(2)
+        requiere_certificado = row[0].segmented_control(
+            "¿Requiere certificado?",
+            options=["No", "Sí"],
+            default=(
+                "Sí"
+                if getattr(order_data, "requiere_certificado", False)
+                else "No"
+            ),
+            width="stretch",
+        )
+        tipo_certificado = row[1].text_input(
+            "¿Cuál?",
+            value=getattr(order_data, "tipo_certificado", None) or "",
+            placeholder="Indica el certificado si seleccionaste Sí",
         )
 
         with st.expander("Editar detalle de la orden", icon=":material/list_alt:"):
@@ -310,31 +356,28 @@ def render_extracted_editor() -> None:
                 objeto=objeto,
                 sede=sede,
                 fecha_orden=fecha_orden,
+                fecha_acta=fecha_acta,
                 fecha_inicio=fecha_inicio,
                 fecha_vencimiento=fecha_vencimiento,
                 subtotal=subtotal,
                 total=total,
+                requiere_certificado=requiere_certificado,
+                tipo_certificado=tipo_certificado,
                 edited_details=edited_details,
             )
             excel_bytes = ExcelGenerator().generate(updated_data)
         except (ValueError, InvalidOperation, ExcelGenerationError) as error:
-            st.error(
+            st.toast(
                 f"No se pudieron guardar los cambios: {error}",
                 icon=":material/error:",
+                duration="long",
             )
         else:
             st.session_state.extracted_order_data = updated_data
             st.session_state.generated_excel_bytes = excel_bytes
             generate_pdf_documents(excel_bytes)
             st.session_state.processing_status = "success"
-            if st.session_state.generated_combined_pdf_bytes is not None:
-                message = (
-                    "Cambios guardados. El Excel, el acta y el PDF final "
-                    "fueron actualizados."
-                )
-            else:
-                message = "Cambios guardados y Excel actualizado."
-            st.success(message, icon=":material/check_circle:")
+            st.toast("Cambios guardados", icon=":material/check_circle:")
 
 
 def _build_edited_order_data(
@@ -354,6 +397,24 @@ def _build_edited_order_data(
         }
     )
     values["proveedor"] = provider
+    values["requiere_certificado"] = (
+        values["requiere_certificado"] == "Sí"
+    )
+    values["tipo_certificado"] = (
+        values["tipo_certificado"].strip() or None
+    )
+    if values["requiere_certificado"] and not values["tipo_certificado"]:
+        raise ValueError("Indica cuál certificado requiere el acta.")
+    if not values["requiere_certificado"]:
+        values["tipo_certificado"] = None
+    if (
+        values["fecha_acta"] is not None
+        and values["fecha_orden"] is not None
+        and values["fecha_acta"] < values["fecha_orden"]
+    ):
+        raise ValueError(
+            "La fecha del acta no puede ser anterior a la fecha de la orden."
+        )
     values["subtotal"] = _parse_decimal(values["subtotal"])
     values["total"] = _parse_decimal(values["total"])
     values["campos_faltantes"] = []
@@ -435,11 +496,6 @@ def render_previews() -> None:
                 )
         else:
             with st.container(horizontal=True, vertical_alignment="center"):
-                st.badge(
-                    "Documentos listos",
-                    icon=":material/check_circle:",
-                    color="green",
-                )
                 combined_pdf = st.session_state.generated_combined_pdf_bytes
                 st.download_button(
                     "Descargar orden y acta",

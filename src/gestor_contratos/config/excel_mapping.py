@@ -103,3 +103,8 @@ DETAIL_FIELD_COLUMNS = {
     "cantidad": "AK",
     "valor_unitario": "AP",
 }
+
+CERTIFICATE_SHEET = "Acta de Entrega Final de Manten"
+CERTIFICATE_NO_CELL = "N28"
+CERTIFICATE_YES_CELL = "S28"
+CERTIFICATE_TYPE_CELL = "X28"

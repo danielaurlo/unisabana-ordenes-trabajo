@@ -47,6 +47,8 @@ class OrdenTrabajoData(BaseModel):
     sede: str | None = None
     fecha_inicio: date | None = None
     fecha_vencimiento: date | None = None
+    requiere_certificado: bool = False
+    tipo_certificado: str | None = None
     proveedor: ProveedorData = Field(default_factory=ProveedorData)
     detalles: list[DetalleOrden] = Field(default_factory=list)
     valor_total_letras: str | None = None
