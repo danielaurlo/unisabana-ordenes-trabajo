@@ -1,0 +1,24 @@
+[theme]
+base = "light"
+primaryColor = "#001c64"
+backgroundColor = "#fbfcfe"
+secondaryBackgroundColor = "#f4f7fb"
+textColor = "#182b49"
+borderColor = "#e1e7f0"
+font = "Roboto:https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
+headingFont = "Roboto:https://fonts.googleapis.com/css2?family=Roboto:wght@500;700&display=swap"
+baseRadius = "0.5rem"
+buttonRadius = "0.5rem"
+showWidgetBorder = true
+showSidebarBorder = true
+paddingTop = "0.5rem"
+paddingBottom = "0.75rem"
+linkUnderline = false
+
+[theme.sidebar]
+backgroundColor = "#f0f4fa"
+secondaryBackgroundColor = "#e2e9f4"
+textColor = "#182b49"
+borderColor = "#d6deea"
+primaryColor = "#001c64"
+linkColor = "#001c64"
